@@ -1,54 +1,26 @@
-import { Binoculars, Check, Lightbulb, Lock, MapPin, Trophy } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { questStops } from '../data';
+import { Binoculars, Check, ExternalLink, Lightbulb, MapPin, Trophy } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useWaypointContext } from '../App';
+import { STORAGE_KEYS, formatDistanceMiles, loadStoredValue, saveStoredValue } from '../lib/utils';
 
 export default function PassengerQuest() {
-  const [found, setFound] = useState(false);
+  const { lore, loreState } = useWaypointContext();
+  const [foundIds, setFoundIds] = useState(() => loadStoredValue(STORAGE_KEYS.quest, []));
   const [hint, setHint] = useState(false);
-  const score = found ? 1490 : 1240;
-  const stops = useMemo(() => questStops.map((stop, index) => {
-    if (!found) return stop;
-    if (index === 3) return { ...stop, active: false, done: true };
-    if (index === 4) return { ...stop, active: true };
-    return stop;
-  }), [found]);
-
-  return (
-    <section className="module quest-module">
-      <div className="quest-scene">
-        <div className="quest-heading"><h1>Passenger Quest</h1><p>I-90 Field Guide</p></div>
-        <div className="quest-card">
-          <Binoculars />
-          <div>
-            <span>{found ? 'Next discovery' : 'Active challenge'}</span>
-            <h2>{found ? 'Spot the Skyway' : 'Find the giant orange moose'}</h2>
-            <p><MapPin /> {found ? 'Watch the skyline in 23 miles' : hint ? 'Look for the hill beyond the lake on your right' : 'Look right in 6 miles'}</p>
-          </div>
-          <button className="primary-button" onClick={() => { setFound(true); setHint(false); }} disabled={found}><Check /> {found ? 'Discovery logged' : 'Found it'}</button>
-          <button className="secondary-button" onClick={() => setHint((value) => !value)}><Lightbulb /> {hint ? 'Hide hint' : 'Give me a hint'}</button>
-        </div>
-
-        <div className="quest-progress" aria-label={`${found ? 5 : 4} of 9 discoveries`}>
-          {stops.map((stop) => (
-            <div key={stop.label} className={`${stop.done ? 'done' : ''} ${stop.active ? 'active' : ''}`}>
-              <i>{stop.done ? <Check /> : stop.active ? <Binoculars /> : <MapPin />}</i>
-              <span>{stop.label}</span>
-            </div>
-          ))}
-        </div>
-        <div className="quest-status">Next discovery in <strong>{found ? '23' : '6'} miles</strong></div>
+  useEffect(() => saveStoredValue(STORAGE_KEYS.quest, foundIds), [foundIds]);
+  const current = lore.find((item) => !foundIds.includes(item.id));
+  if (!lore.length) return <section className="module quest-module empty-module"><div className="empty-state"><Binoculars /><span>Passenger Quest</span><h1>{loreState.status === 'loading' ? 'Building live discoveries…' : 'No nearby discoveries yet'}</h1><p>{loreState.error || 'Set an origin to create challenges from real nearby places.'}</p></div></section>;
+  const complete = !current;
+  return <section className="module quest-module">
+    <div className="quest-scene"><div className="quest-heading"><h1>Passenger Quest</h1><p>Live local field guide</p></div>
+      <div className="quest-card"><Binoculars /><div><span>{complete ? 'Route discoveries complete' : 'Nearby discovery'}</span><h2>{complete ? 'You found every live place' : `Find out: ${current.title}`}</h2><p><MapPin /> {complete ? `${lore.length} places logged on this device` : `${formatDistanceMiles(current.distanceMeters)} from the selected origin`}</p>{hint && current && <p>{current.summary.split(/(?<=[.!?])\s+/)[0]}</p>}</div>
+        <button className="primary-button" disabled={complete} onClick={() => { setFoundIds((ids) => [...ids, current.id]); setHint(false); }}><Check /> {complete ? 'All logged' : 'I found it'}</button>
+        {!complete && <button className="secondary-button" onClick={() => setHint((value) => !value)}><Lightbulb /> {hint ? 'Hide hint' : 'Show a real clue'}</button>}
+        {!complete && <a className="quiet-action" href={current.url} target="_blank" rel="noreferrer"><ExternalLink /> Verify source</a>}
       </div>
-
-      <aside className="score-panel">
-        <Trophy />
-        <span>Score</span>
-        <strong>{score.toLocaleString()}</strong>
-        <div className="score-players">
-          <div><span>Ari</span><strong>{found ? 970 : 720}</strong></div>
-          <div><span>Sam</span><strong>520</strong></div>
-        </div>
-        <p><Lock /> Passenger controls only</p>
-      </aside>
-    </section>
-  );
+      <div className="quest-progress">{lore.map((item) => <div key={item.id} className={`${foundIds.includes(item.id) ? 'done' : ''} ${item.id === current?.id ? 'active' : ''}`}><i>{foundIds.includes(item.id) ? <Check /> : <MapPin />}</i><span>{item.title}</span></div>)}</div>
+      <div className="quest-status">Actual progress <strong>{foundIds.filter((id) => lore.some((item) => item.id === id)).length} / {lore.length}</strong></div>
+    </div>
+    <aside className="score-panel"><Trophy /><span>Discoveries</span><strong>{foundIds.length}</strong><div className="score-players"><div><span>This device</span><strong>{foundIds.length * 100}</strong></div></div><p>Derived from live Wikipedia places</p></aside>
+  </section>;
 }

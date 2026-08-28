@@ -1,60 +1,36 @@
-import { AlertTriangle, BatteryCharging, Check, Fan, Moon, Sunrise, Wind } from 'lucide-react';
-import { useState } from 'react';
+import { AlertTriangle, Check, Moon, Save, Sunrise, TentTree, Wind } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useWaypointContext } from '../App';
+import { STORAGE_KEYS, formatClock, loadStoredValue, saveStoredValue } from '../lib/utils';
 
-function Chart({ reserve, charge, morningReserve }) {
-  const endY = 166 - morningReserve * 1.45;
-  return (
-    <svg className="camp-chart" viewBox="0 0 900 430" preserveAspectRatio="none" aria-label="Overnight battery and temperature forecast">
-      {[0,1,2,3,4,5,6,7,8,9].map((index) => <line key={index} x1={40 + index * 88} y1="35" x2={40 + index * 88} y2="390" className="chart-grid" />)}
-      <line x1="35" y1={166 - reserve * 1.45} x2="850" y2={166 - reserve * 1.45} className="reserve-line" />
-      <path className="battery-area" d={`M40 62 C180 72 255 92 370 106 S600 140 850 ${endY} L850 175 L40 175Z`} />
-      <path className="battery-path" d={`M40 62 C180 72 255 92 370 106 S600 140 850 ${endY}`} />
-      <path className="inside-path" d="M40 248 C230 246 460 251 850 248" />
-      <path className="outside-path" d="M40 332 C280 340 535 356 850 380" />
-      <circle cx="40" cy="62" r="5" className="chart-dot" /><circle cx="850" cy={endY} r="5" className="chart-dot" />
-      <text x="42" y="52" className="chart-value">{charge}%</text><text x="814" y={endY - 12} className="chart-value">{morningReserve}%</text>
-      <text x="42" y="238" className="chart-value">68°F</text><text x="814" y="238" className="chart-value">68°F</text>
-      <text x="42" y="322" className="chart-value">58°F</text><text x="814" y="372" className="chart-value">42°F</text>
-      {['10 PM','11 PM','12 AM','1 AM','2 AM','3 AM','4 AM','5 AM','6 AM','7 AM'].map((label, index) => <text key={label} x={25 + index * 88} y="22" className="chart-time">{label}</text>)}
-      <text x="12" y="82" className="chart-label">Battery</text><text x="12" y="264" className="chart-label">Inside</text><text x="12" y="350" className="chart-label">Outside</text>
-    </svg>
-  );
+function ForecastChart({ hours }) {
+  const values = hours.map((hour) => hour.temperature);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const points = values.map((value, index) => `${45 + index * 72},${320 - ((value - low) / Math.max(1, high - low)) * 180}`).join(' ');
+  return <div className="camp-chart live-camp-chart"><svg viewBox="0 0 900 430" preserveAspectRatio="none"><defs><linearGradient id="forecast-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#79c8ff" stopOpacity=".32"/><stop offset="1" stopColor="#79c8ff" stopOpacity="0"/></linearGradient></defs><polyline className="outside-path" points={points} /><polygon className="forecast-area" points={`45,370 ${points} ${45 + (hours.length - 1) * 72},370`} /></svg><div className="forecast-labels">{hours.map((hour, index) => <div key={hour.time} style={{ left: `${5 + index * 8}%` }}><strong>{Math.round(hour.temperature)}°</strong><span>{index % 2 === 0 ? formatClock(hour.time) : ''}</span></div>)}</div></div>;
 }
 
 export default function Campglass() {
-  const { charge, overnight } = useWaypointContext();
-  const [reserve, setReserve] = useState(30);
-  const [applied, setApplied] = useState(false);
-  const overnightLow = overnight.length ? Math.round(Math.min(...overnight.map((item) => item.temperature))) : 42;
-  const morningReserve = Math.max(reserve, charge - 37);
-
-  return (
-    <section className="module campglass-module">
-      <div className="camp-main">
-        <div className="panel-heading"><span>Campglass</span><h1>Comfort until sunrise</h1><p>Devil's Lake State Park</p></div>
-        <div className="camp-metrics">
-          <div><strong>{charge}%</strong><span>now</span></div>
-          <div><strong>{morningReserve}%</strong><span>morning reserve</span></div>
-          <div><strong>{overnightLow}°F</strong><span>overnight low</span></div>
-        </div>
-        <Chart reserve={reserve} charge={charge} morningReserve={morningReserve} />
-        <div className="sunrise-label"><Sunrise /> 6:22 AM</div>
-      </div>
-
-      <aside className="focus-panel camp-controls">
-        <div className="camp-active"><Moon /><div><strong>Camp Mode active</strong><span>Optimizing comfort and efficiency overnight.</span></div></div>
-        <div className="reserve-control">
-          <label htmlFor="reserve">Protect at least <strong>{reserve}%</strong></label>
-          <input id="reserve" type="range" min="20" max="50" value={reserve} onChange={(event) => { setReserve(Number(event.target.value)); setApplied(false); }} />
-          <div><span>20%</span><span>50%</span></div>
-          <p>Battery will hold at or above this level until morning.</p>
-        </div>
-        <div className="route-alert"><AlertTriangle /><span>Wind increases after 3 AM.</span></div>
-        <button className="primary-button" onClick={() => setApplied(true)}>{applied ? <Check /> : <BatteryCharging />}{applied ? 'Energy plan applied' : 'Apply energy plan'}</button>
-        <button className="secondary-button" onClick={() => { setReserve(30); setApplied(false); }}>Keep current settings</button>
-        <footer className="camp-footer"><Fan /> Climate 68°F <span>•</span><Wind /> 8h 14m until sunrise</footer>
-      </aside>
-    </section>
-  );
+  const { charge, overnightState, nearbyState, originLabel } = useWaypointContext();
+  const [target, setTarget] = useState(() => loadStoredValue(STORAGE_KEYS.camp, { target: 68 }).target);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => saveStoredValue(STORAGE_KEYS.camp, { target }), [target]);
+  const hours = overnightState.hours || [];
+  if (!hours.length) return <section className="module campglass-module empty-module"><div className="empty-state"><Moon /><span>Campglass</span><h1>{overnightState.status === 'loading' ? 'Loading the overnight forecast…' : 'No forecast yet'}</h1><p>{overnightState.error || 'Set an origin to plan with real local weather and nearby campsites.'}</p></div></section>;
+  const low = Math.round(Math.min(...hours.map((hour) => hour.temperature)));
+  const maxGust = Math.round(Math.max(...hours.map((hour) => hour.gust || 0)));
+  const camp = nearbyState.campsites?.[0];
+  return <section className="module campglass-module">
+    <div className="camp-main"><div className="panel-heading"><span>Campglass</span><h1>Plan until sunrise</h1><p>{camp?.name || originLabel} · public forecast</p></div>
+      <div className="camp-metrics"><div><strong>{Number.isFinite(charge) ? `${charge}%` : 'Unset'}</strong><span>manual battery</span></div><div><strong>{target}°F</strong><span>comfort assumption</span></div><div><strong>{low}°F</strong><span>forecast low</span></div></div>
+      <ForecastChart hours={hours} /><div className="sunrise-label"><Sunrise /> {overnightState.sunrise ? formatClock(overnightState.sunrise) : 'Sunrise unavailable'}</div>
+    </div>
+    <aside className="focus-panel camp-controls"><div className="camp-active"><TentTree /><div><strong>Planning only</strong><span>Waypoint cannot see or change Tesla Camp Mode.</span></div></div>
+      <div className="reserve-control"><label htmlFor="target">Cabin target assumption <strong>{target}°F</strong></label><input id="target" type="range" min="58" max="76" value={target} onChange={(event) => { setTarget(Number(event.target.value)); setSaved(false); }} /><p>No battery reserve is predicted without vehicle consumption data.</p></div>
+      <div className="route-alert"><AlertTriangle /><span>Peak forecast gust: {maxGust} mph.</span></div>
+      <button className="primary-button" onClick={() => setSaved(true)}>{saved ? <Check /> : <Save />}{saved ? 'Scenario saved locally' : 'Save planning scenario'}</button>
+      <footer className="camp-footer"><Wind /> {hours.length} live forecast hours <span>•</span> Updated {formatClock(overnightState.updatedAt || Date.now())}</footer>
+    </aside>
+  </section>;
 }

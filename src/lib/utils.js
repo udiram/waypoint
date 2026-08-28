@@ -1,24 +1,9 @@
-export const DEFAULT_ORIGIN = {
-  latitude: 43.0731,
-  longitude: -89.4012,
-  label: 'Madison, WI',
-};
-
-export const DEFAULT_DESTINATION = {
-  latitude: 41.8781,
-  longitude: -87.6298,
-  label: 'Chicago, IL',
-};
-
 export const STORAGE_KEYS = {
-  settings: 'waypoint.v1.settings',
-  capsule: 'waypoint.v1.capsule',
-  convoy: 'waypoint.v1.convoy',
-};
-
-export const FEATURE_COPY = {
-  convoyNames: ['Maya', 'Theo', 'Jun'],
-  convoyColors: ['#c4a8ff', '#a2e686', '#ffcb58'],
+  settings: 'waypoint.v2.settings',
+  capsule: 'waypoint.v2.capsule',
+  convoy: 'waypoint.v2.convoy',
+  quest: 'waypoint.v2.quest',
+  camp: 'waypoint.v2.camp',
 };
 
 export function clamp(value, lower, upper) {
@@ -26,10 +11,12 @@ export function clamp(value, lower, upper) {
 }
 
 export function formatDistanceMiles(distanceMeters) {
-  return `${(distanceMeters / 1609.344).toFixed(distanceMeters > 16093 ? 0 : 1)} mi`;
+  const miles = distanceMeters / 1609.344;
+  return `${miles.toFixed(miles >= 10 ? 0 : 1)} mi`;
 }
 
 export function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return 'No route';
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.round((seconds % 3600) / 60);
   if (hours === 0) return `${minutes}m`;
@@ -45,10 +32,12 @@ export function formatClock(input) {
 }
 
 export function formatTemp(value) {
+  if (!Number.isFinite(value)) return 'Unavailable';
   return `${Math.round(value)}°F`;
 }
 
 export function formatCharge(value) {
+  if (!Number.isFinite(value)) return 'Unset';
   return `${Math.round(value)}%`;
 }
 
@@ -97,66 +86,167 @@ export function fromEncodedPayload(value) {
   }
 }
 
-export function sampleRoutePoints(coordinates, fractions) {
-  if (!coordinates?.length) return [];
-  return fractions.map((fraction) => {
-    const index = Math.round(clamp(fraction, 0, 1) * (coordinates.length - 1));
-    const [longitude, latitude] = coordinates[index];
-    return { longitude, latitude };
-  });
-}
-
-export function routePathFromCoordinates(coordinates) {
-  if (!coordinates?.length) return '';
-  const longs = coordinates.map(([longitude]) => longitude);
-  const lats = coordinates.map(([, latitude]) => latitude);
-  const minLon = Math.min(...longs);
-  const maxLon = Math.max(...longs);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const lonSpan = Math.max(0.0001, maxLon - minLon);
-  const latSpan = Math.max(0.0001, maxLat - minLat);
-
-  return coordinates
-    .map(([longitude, latitude], index) => {
-      const x = 80 + ((longitude - minLon) / lonSpan) * 840;
-      const y = 80 + ((maxLat - latitude) / latSpan) * 840;
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(' ');
-}
-
-export function routeMarkersFromCoordinates(coordinates, labels) {
-  if (!coordinates?.length) return [];
-  const longs = coordinates.map(([longitude]) => longitude);
-  const lats = coordinates.map(([, latitude]) => latitude);
-  const minLon = Math.min(...longs);
-  const maxLon = Math.max(...longs);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const lonSpan = Math.max(0.0001, maxLon - minLon);
-  const latSpan = Math.max(0.0001, maxLat - minLat);
-
-  return sampleRoutePoints(coordinates, [0, 0.5, 1]).map((point, index) => ({
-    label: labels[index],
-    x: ((80 + ((point.longitude - minLon) / lonSpan) * 840) / 1000) * 100,
-    y: ((80 + ((maxLat - point.latitude) / latSpan) * 840) / 1000) * 100,
-  }));
-}
-
 export function minutesFromNow(seconds) {
   return Math.max(1, Math.round(seconds / 60));
 }
 
 export function estimateArrival(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return 'Set destination';
   return formatClock(Date.now() + seconds * 1000);
 }
 
-export function buildFallbackMoments(originLabel, destinationLabel) {
-  return [
-    { title: `Departed ${originLabel.split(',')[0]}`, time: formatClock(Date.now() - 2 * 60 * 60 * 1000), frame: 0 },
-    { title: 'Storm over Rockford', time: formatClock(Date.now() - 78 * 60 * 1000), frame: 1 },
-    { title: 'First skyline view', time: formatClock(Date.now() - 11 * 60 * 1000), frame: 2 },
-    { title: `Arrived ${destinationLabel.split(',')[0]}`, time: formatClock(Date.now()), frame: 3 },
+export function haversineMeters(left, right) {
+  if (!left || !right) return Number.POSITIVE_INFINITY;
+  const radians = (value) => value * Math.PI / 180;
+  const dLat = radians(right.latitude - left.latitude);
+  const dLon = radians(right.longitude - left.longitude);
+  const lat1 = radians(left.latitude);
+  const lat2 = radians(right.latitude);
+  const value = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+export function bearingDegrees(from, to) {
+  const radians = (value) => value * Math.PI / 180;
+  const degrees = (value) => value * 180 / Math.PI;
+  const lat1 = radians(from.latitude);
+  const lat2 = radians(to.latitude);
+  const dLon = radians(to.longitude - from.longitude);
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return (degrees(Math.atan2(y, x)) + 360) % 360;
+}
+
+export function crosswindMph(wind, windDirection, roadBearing) {
+  if (![wind, windDirection, roadBearing].every(Number.isFinite)) return null;
+  return Math.abs(wind * Math.sin((windDirection - roadBearing) * Math.PI / 180));
+}
+
+export function sampleRoutePoints(coordinates, fractions) {
+  if (!coordinates?.length) return [];
+  return fractions.map((fraction) => {
+    const index = Math.round(clamp(fraction, 0, 1) * (coordinates.length - 1));
+    const [longitude, latitude] = coordinates[index];
+    return { longitude, latitude, index };
+  });
+}
+
+export function weatherCodeLabel(code) {
+  if (code === 0) return 'Clear';
+  if ([1, 2, 3].includes(code)) return 'Cloudy';
+  if ([45, 48].includes(code)) return 'Fog';
+  if (code >= 51 && code <= 67) return 'Rain';
+  if (code >= 71 && code <= 77) return 'Snow';
+  if (code >= 80 && code <= 82) return 'Showers';
+  if (code >= 85 && code <= 86) return 'Snow showers';
+  if (code >= 95) return 'Thunderstorms';
+  return 'Conditions';
+}
+
+export function summarizeRouteWeather(stops = []) {
+  const max = (key) => {
+    const values = stops.map((stop) => stop[key]).filter(Number.isFinite);
+    return values.length ? Math.max(...values) : null;
+  };
+  const maxWind = max('wind');
+  const maxGust = max('gust');
+  const maxCrosswind = max('crosswind');
+  const maxPrecipitation = max('precipitationProbability');
+  const risk = stops.length ? (maxCrosswind || maxWind || 0) + (maxGust || 0) * .25 + (maxPrecipitation || 0) * .08 : null;
+  return { maxWind, maxGust, maxCrosswind, maxPrecipitation, risk };
+}
+
+export function routeBounds(coordinates = [], extraPoints = []) {
+  const pairs = [
+    ...coordinates.map(([longitude, latitude]) => ({ longitude, latitude })),
+    ...extraPoints.filter((point) => Number.isFinite(point?.longitude) && Number.isFinite(point?.latitude)),
   ];
+
+  if (!pairs.length) {
+    return {
+      minLon: -1,
+      maxLon: 1,
+      minLat: -1,
+      maxLat: 1,
+    };
+  }
+
+  const longitudes = pairs.map((point) => point.longitude);
+  const latitudes = pairs.map((point) => point.latitude);
+  const minLon = Math.min(...longitudes);
+  const maxLon = Math.max(...longitudes);
+  const minLat = Math.min(...latitudes);
+  const maxLat = Math.max(...latitudes);
+  const lonPad = Math.max(0.06, (maxLon - minLon) * 0.14);
+  const latPad = Math.max(0.04, (maxLat - minLat) * 0.18);
+
+  return {
+    minLon: minLon - lonPad,
+    maxLon: maxLon + lonPad,
+    minLat: minLat - latPad,
+    maxLat: maxLat + latPad,
+  };
+}
+
+export function projectPoint(point, bounds) {
+  const lonSpan = Math.max(0.0001, bounds.maxLon - bounds.minLon);
+  const latSpan = Math.max(0.0001, bounds.maxLat - bounds.minLat);
+  const x = 80 + ((point.longitude - bounds.minLon) / lonSpan) * 840;
+  const y = 80 + ((bounds.maxLat - point.latitude) / latSpan) * 840;
+  return { x, y };
+}
+
+export function routePathFromCoordinates(coordinates = [], bounds = routeBounds(coordinates)) {
+  if (!coordinates.length) return '';
+  return coordinates
+    .map(([longitude, latitude], index) => {
+      const { x, y } = projectPoint({ longitude, latitude }, bounds);
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(' ');
+}
+
+export function viewportMarkers(points = [], bounds) {
+  return points
+    .filter((point) => Number.isFinite(point?.longitude) && Number.isFinite(point?.latitude))
+    .map((point) => {
+      const projected = projectPoint(point, bounds);
+      return {
+        ...point,
+        x: (projected.x / 1000) * 100,
+        y: (projected.y / 1000) * 100,
+      };
+    });
+}
+
+export function summarizeHazard(hazard) {
+  if (!hazard) {
+    return {
+      title: 'Route loading',
+      detail: 'Pulling live forecast',
+      severity: 'subtle',
+    };
+  }
+
+  if (hazard.primaryMaxPrecip >= 50) {
+    return {
+      title: 'Rain on route',
+      detail: `${Math.round(hazard.primaryMaxPrecip)}% precip chance ahead`,
+      severity: 'hazard',
+    };
+  }
+
+  if (hazard.primaryMaxWind >= 18) {
+    return {
+      title: 'Wind on route',
+      detail: `${Math.round(hazard.primaryMaxWind)} mph peak crosswind`,
+      severity: 'hazard',
+    };
+  }
+
+  return {
+    title: 'Route looks clear',
+    detail: 'No major weather spikes sampled',
+    severity: 'subtle',
+  };
 }
