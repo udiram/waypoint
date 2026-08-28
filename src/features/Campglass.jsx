@@ -7,8 +7,9 @@ function ForecastChart({ hours }) {
   const values = hours.map((hour) => hour.temperature);
   const low = Math.min(...values);
   const high = Math.max(...values);
-  const points = values.map((value, index) => `${45 + index * 72},${320 - ((value - low) / Math.max(1, high - low)) * 180}`).join(' ');
-  return <div className="camp-chart live-camp-chart"><svg viewBox="0 0 900 430" preserveAspectRatio="none"><defs><linearGradient id="forecast-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#79c8ff" stopOpacity=".32"/><stop offset="1" stopColor="#79c8ff" stopOpacity="0"/></linearGradient></defs><polyline className="outside-path" points={points} /><polygon className="forecast-area" points={`45,370 ${points} ${45 + (hours.length - 1) * 72},370`} /></svg><div className="forecast-labels">{hours.map((hour, index) => <div key={hour.time} style={{ left: `${5 + index * 8}%` }}><strong>{Math.round(hour.temperature)}°</strong><span>{index % 2 === 0 ? formatClock(hour.time) : ''}</span></div>)}</div></div>;
+  const xFor = (index) => 48 + index * (804 / Math.max(1, hours.length - 1));
+  const points = values.map((value, index) => `${xFor(index)},${320 - ((value - low) / Math.max(1, high - low)) * 180}`).join(' ');
+  return <div className="camp-chart live-camp-chart"><svg viewBox="0 0 900 430" preserveAspectRatio="none"><defs><linearGradient id="forecast-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#79c8ff" stopOpacity=".24"/><stop offset="1" stopColor="#79c8ff" stopOpacity="0"/></linearGradient></defs><polyline className="outside-path" points={points} /><polygon className="forecast-area" points={`48,370 ${points} ${xFor(hours.length - 1)},370`} /></svg><div className="forecast-labels">{hours.map((hour, index) => <div key={hour.time} style={{ left: `${5.5 + index * (89 / Math.max(1, hours.length - 1))}%` }}><strong>{Math.round(hour.temperature)}°</strong><span>{index % 2 === 0 ? formatClock(hour.time) : ''}</span></div>)}</div></div>;
 }
 
 export default function Campglass() {

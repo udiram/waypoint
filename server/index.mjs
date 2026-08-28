@@ -16,6 +16,8 @@ const version = process.env.RAILWAY_GIT_COMMIT_SHA
 
 const rooms = new Map();
 const cache = new Map();
+let nominatimQueue = Promise.resolve();
+let nominatimLastRequestAt = 0;
 const APP_USER_AGENT = 'WaypointTeslaBrowser/2.0 (+https://github.com/udiram/waypoint)';
 const DEFAULT_HEADERS = {
   Accept: 'application/json',
@@ -260,11 +262,27 @@ async function fetchCachedJson(key, ttlMs, url, options) {
   return value;
 }
 
+async function fetchNominatimJson(key, ttlMs, url) {
+  const entry = cache.get(key);
+  if (entry && entry.expiresAt > Date.now()) return entry.value;
+
+  const request = nominatimQueue.then(async () => {
+    const waitMs = Math.max(0, 1100 - (Date.now() - nominatimLastRequestAt));
+    if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
+    nominatimLastRequestAt = Date.now();
+    return fetchJson(url);
+  });
+  nominatimQueue = request.catch(() => undefined);
+  const value = await request;
+  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  return value;
+}
+
 async function reverseGeocode(latitude, longitude) {
   const lat = roundCoordinate(latitude, 4);
   const lon = roundCoordinate(longitude, 4);
   const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=12&lat=${lat}&lon=${lon}`;
-  const data = await fetchCachedJson(`reverse:${lat}:${lon}`, 6 * 60 * 60 * 1000, url);
+  const data = await fetchNominatimJson(`reverse:${lat}:${lon}`, 6 * 60 * 60 * 1000, url);
   return {
     latitude,
     longitude,
@@ -273,18 +291,23 @@ async function reverseGeocode(latitude, longitude) {
   };
 }
 
-async function geocodePlace(query) {
+async function searchPlaces(query, limit = 5) {
   const normalized = query.trim();
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(normalized)}`;
-  const data = await fetchCachedJson(`search:${normalized.toLowerCase()}`, 24 * 60 * 60 * 1000, url);
-  const place = data[0];
-  if (!place) return null;
-  return {
+  const safeLimit = Math.min(6, Math.max(1, limit));
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&dedupe=1&limit=${safeLimit}&q=${encodeURIComponent(normalized)}`;
+  const data = await fetchNominatimJson(`search:${safeLimit}:${normalized.toLowerCase()}`, 24 * 60 * 60 * 1000, url);
+  return data.map((place) => ({
     latitude: Number(place.lat),
     longitude: Number(place.lon),
     label: place.display_name,
     shortLabel: shortPlaceLabel(place.display_name),
-  };
+    type: place.type || place.category || 'place',
+  }));
+}
+
+async function geocodePlace(query) {
+  const places = await searchPlaces(query, 1);
+  return places[0] || null;
 }
 
 async function fetchForecast(latitude, longitude) {
@@ -700,13 +723,13 @@ app.get('/api/version', (_request, response) => {
 
 app.get('/api/geocode/search', async (request, response) => {
   const query = String(request.query.q || '').trim();
-  if (!query) {
-    response.json({ ok: true, destination: null });
+  if (query.length < 3) {
+    response.json({ ok: true, results: [] });
     return;
   }
   try {
-    const destination = await geocodePlace(query);
-    response.json({ ok: true, destination });
+    const results = await searchPlaces(query, 5);
+    response.json({ ok: true, results, dataSource: 'OpenStreetMap Nominatim' });
   } catch (error) {
     response.status(502).json({ ok: false, error: error.message });
   }

@@ -22,6 +22,12 @@ export function geocodePlace(query) {
   return fetchJson(`/api/geocode?q=${encodeURIComponent(query.trim())}`);
 }
 
+export async function searchPlaces(query) {
+  if (!query?.trim() || query.trim().length < 3) return [];
+  const result = await fetchJson(`/api/geocode/search?q=${encodeURIComponent(query.trim())}`);
+  return result.results || [];
+}
+
 export async function fetchCurrentWeather(latitude, longitude) {
   const current = [
     'temperature_2m', 'apparent_temperature', 'precipitation', 'rain', 'weather_code',

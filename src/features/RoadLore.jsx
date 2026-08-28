@@ -43,10 +43,12 @@ export default function RoadLore() {
   const excerpt = current.summary.split(/(?<=[.!?])\s+/).slice(0, 3);
   return (
     <section className="module roadlore-module">
-      <div className="story-canvas" style={current.thumbnail ? { backgroundImage: `linear-gradient(90deg, rgba(6,12,17,.16), rgba(6,12,17,.82)), url("${current.thumbnail}")` } : undefined} role="img" aria-label={`View connected to ${current.title}`}>
-        <div className="lore-route"><i /><i /><i /></div>
-        <div className="lore-marker current"><Landmark /><span><strong>{current.title}</strong><small>{formatDistanceMiles(current.distanceMeters)} from {originLabel.split(',')[0]}</small></span></div>
-        {lore[1] && <div className="lore-marker next"><Volume2 /><span><strong>{lore[1].title}</strong><small>{formatDistanceMiles(lore[1].distanceMeters)} away</small></span></div>}
+      <div className="story-canvas" style={current.thumbnail ? { backgroundImage: `linear-gradient(90deg, rgba(6,12,17,.08), rgba(6,12,17,.76)), url("${current.thumbnail}")` } : undefined} role="img" aria-label={`View connected to ${current.title}`}>
+        <div className="story-place-caption">
+          <Landmark />
+          <span><strong>{current.title}</strong><small>{formatDistanceMiles(current.distanceMeters)} from {originLabel.split(',')[0]}</small></span>
+        </div>
+        {lore[1] && <div className="story-next"><Volume2 /><span>Next nearby: {lore[1].title}</span></div>}
       </div>
       <aside className="focus-panel story-focus">
         <div className="story-title"><i><Landmark /></i><div><h1>{current.title}</h1><p>Live nearby story · Wikipedia</p></div></div>

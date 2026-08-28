@@ -2,6 +2,7 @@ import { Battery, CarFront, CloudRain, Compass, Flag, Gauge, Landmark, LocateFix
 import { useState } from 'react';
 import { useWaypointContext } from '../App';
 import { estimateArrival, formatDistanceMiles, formatDuration, formatTemp, summarizeRouteWeather } from '../lib/utils';
+import AddressCombobox from './AddressCombobox';
 import Modal from './Modal';
 
 const navItems = [
@@ -12,7 +13,7 @@ const navItems = [
 function JourneyRail({ originLabel, destination, routeState, nearbyState, locationStatus }) {
   const route = routeState.primary;
   const risk = summarizeRouteWeather(routeState.primaryWeather);
-  if (!route) {
+  if (!route || !destination) {
     return <aside className="journey-rail empty-rail"><Compass /><strong>{routeState.status === 'awaiting_location' ? 'Set your location' : 'Choose a destination'}</strong><span>Live trip events will appear here.</span><small>{locationStatus}</small></aside>;
   }
   const charger = nearbyState.chargers?.[0];
@@ -54,12 +55,27 @@ export default function AppShell({ children }) {
       </footer>
       {showPlanner && <Modal title="Live trip setup" onClose={() => setShowPlanner(false)}>
         <form className="planner-form" onSubmit={(event) => event.preventDefault()}>
-          <label htmlFor="origin">Origin</label>
-          <div className="inline-field"><input id="origin" value={app.originQuery} onChange={(event) => app.setOriginQuery(event.target.value)} placeholder="e.g. Madison, WI" /><button type="button" onClick={app.applyOriginQuery}>Use</button></div>
+          <AddressCombobox
+            id="origin"
+            label="Origin"
+            value={app.originQuery}
+            onValueChange={app.setOriginQuery}
+            onSelect={app.selectOrigin}
+            selectedLabel={app.locationState.source === 'manual' ? app.originLabel : ''}
+            placeholder="Start typing an address or place"
+            autoFocus
+          />
           <button className="secondary-button" type="button" onClick={app.requestLiveLocation}><LocateFixed /> Use live GPS</button>
           <small className="field-status">{app.locationStatus}</small>
-          <label htmlFor="destination">Destination</label>
-          <input id="destination" value={app.destinationQuery} onChange={(event) => app.setDestinationQuery(event.target.value)} placeholder="e.g. Minneapolis, MN" />
+          <AddressCombobox
+            id="destination"
+            label="Destination"
+            value={app.destinationQuery}
+            onValueChange={app.setDestinationQuery}
+            onSelect={app.selectDestination}
+            selectedLabel={app.destination?.label || ''}
+            placeholder="Start typing an address or place"
+          />
           <label htmlFor="charge">Starting battery <small>(manual)</small></label>
           <div className="inline-field"><Battery /><input id="charge" type="number" min="1" max="100" value={app.charge ?? ''} onChange={(event) => app.setCharge(event.target.value === '' ? null : Number(event.target.value))} placeholder="Optional" /></div>
           <div className="planner-hint"><Gauge /><span>Waypoint reads browser location and public data. It does not control or read your Tesla without Fleet API authorization.</span></div>

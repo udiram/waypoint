@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchCurrentWeather, fetchLore, fetchNearbyPlaces, fetchOvernightWeather,
   fetchRouteBundle, fetchWeatherAlongRoute, geocodePlace, reverseGeocode,
@@ -34,7 +34,6 @@ export function useWaypointApp() {
   const [routeState, setRouteState] = useState(EMPTY_ROUTE);
   const [capsuleMoments, setCapsuleMoments] = useState(loadStoredValue(STORAGE_KEYS.capsule, sharedCapsule?.moments || []));
   const [roomCode, setRoomCode] = useState(convoy.roomCode);
-  const deferredDestination = useDeferredValue(destinationQuery);
   const lastGps = useRef(null);
 
   useEffect(() => saveStoredValue(STORAGE_KEYS.settings, { originQuery, destinationQuery, charge, origin: manualOrigin }), [originQuery, destinationQuery, charge, manualOrigin]);
@@ -73,28 +72,35 @@ export function useWaypointApp() {
       { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
   };
 
+  const selectOrigin = (place) => {
+    const nextOrigin = { latitude: place.latitude, longitude: place.longitude, label: place.label };
+    setOriginQuery(place.label);
+    setManualOrigin(nextOrigin);
+    setPosition(nextOrigin);
+    setOriginLabel(place.label);
+    setLocationState({ status: 'ready', source: 'manual', error: null, accuracy: null, updatedAt: Date.now() });
+  };
+
   const applyOriginQuery = async () => {
     if (originQuery.trim().length < 3) return;
     setLocationState((current) => ({ ...current, status: 'locating', error: null }));
     try {
       const place = await geocodePlace(originQuery);
-      const nextOrigin = { latitude: place.latitude, longitude: place.longitude, label: place.label };
-      setManualOrigin(nextOrigin);
-      setPosition(nextOrigin);
-      setOriginLabel(place.label);
-      setLocationState({ status: 'ready', source: 'manual', error: null, accuracy: null, updatedAt: Date.now() });
+      selectOrigin(place);
     } catch (error) {
       setLocationState({ status: 'unavailable', source: 'manual', error: error.message, accuracy: null, updatedAt: null });
     }
   };
 
-  useEffect(() => {
-    const query = deferredDestination.trim();
-    if (query.length < 3) { setDestination(null); return undefined; }
-    let ignore = false;
-    const id = window.setTimeout(() => geocodePlace(query).then((place) => { if (!ignore) setDestination(place); }).catch(() => { if (!ignore) setDestination(null); }), 500);
-    return () => { ignore = true; window.clearTimeout(id); };
-  }, [deferredDestination]);
+  const updateDestinationQuery = (value) => {
+    setDestinationQuery(value);
+    if (value !== destination?.label) setDestination(null);
+  };
+
+  const selectDestination = (place) => {
+    setDestinationQuery(place.label);
+    setDestination(place);
+  };
 
   useEffect(() => {
     if (!position) return undefined;
@@ -142,8 +148,8 @@ export function useWaypointApp() {
   }, [position?.latitude, position?.longitude, destination?.latitude, destination?.longitude]);
 
   return useMemo(() => ({
-    active, setActive, position, originLabel, originQuery, setOriginQuery, applyOriginQuery, requestLiveLocation,
-    destination, destinationQuery, setDestinationQuery, charge, setCharge, locationState,
+    active, setActive, position, originLabel, originQuery, setOriginQuery, selectOrigin, applyOriginQuery, requestLiveLocation,
+    destination, destinationQuery, setDestinationQuery: updateDestinationQuery, selectDestination, charge, setCharge, locationState,
     locationStatus: locationState.error || (locationState.source === 'gps' ? 'Live GPS' : locationState.source === 'manual' ? 'Manual origin' : 'Waiting for location'),
     weather: weatherState.data, weatherState, overnight: overnightState.hours, overnightState,
     lore: loreState.items, loreState, nearbyState, routeState,
