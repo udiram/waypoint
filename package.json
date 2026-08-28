@@ -1,0 +1,29 @@
+{
+  "name": "waypoint-tesla-browser",
+  "private": true,
+  "version": "1.1.0",
+  "description": "Touch-first Tesla browser companion for route weather, road stories, convoy sync, camp planning, passenger games, and trip capsules.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "dev:server": "node --watch server/index.mjs",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "start": "node server/index.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "express": "5.2.1",
+    "lucide-react": "1.35.0",
+    "qrcode": "1.5.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.1.1",
+    "vite": "8.2.2"
+  }
+}

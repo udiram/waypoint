@@ -1,0 +1,17 @@
+{
+  "name": "Waypoint",
+  "short_name": "Waypoint",
+  "description": "A touch-first road intelligence suite for the Tesla browser.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#06090c",
+  "theme_color": "#06090c",
+  "icons": [
+    {
+      "src": "/waypoint.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
