@@ -1,8 +1,9 @@
 import { AlertTriangle, BatteryCharging, Check, Fan, Moon, Sunrise, Wind } from 'lucide-react';
 import { useState } from 'react';
+import { useWaypointContext } from '../App';
 
-function Chart({ reserve }) {
-  const endY = 166 - reserve * 1.45;
+function Chart({ reserve, charge, morningReserve }) {
+  const endY = 166 - morningReserve * 1.45;
   return (
     <svg className="camp-chart" viewBox="0 0 900 430" preserveAspectRatio="none" aria-label="Overnight battery and temperature forecast">
       {[0,1,2,3,4,5,6,7,8,9].map((index) => <line key={index} x1={40 + index * 88} y1="35" x2={40 + index * 88} y2="390" className="chart-grid" />)}
@@ -12,7 +13,7 @@ function Chart({ reserve }) {
       <path className="inside-path" d="M40 248 C230 246 460 251 850 248" />
       <path className="outside-path" d="M40 332 C280 340 535 356 850 380" />
       <circle cx="40" cy="62" r="5" className="chart-dot" /><circle cx="850" cy={endY} r="5" className="chart-dot" />
-      <text x="42" y="52" className="chart-value">68%</text><text x="814" y={endY - 12} className="chart-value">{reserve + 1}%</text>
+      <text x="42" y="52" className="chart-value">{charge}%</text><text x="814" y={endY - 12} className="chart-value">{morningReserve}%</text>
       <text x="42" y="238" className="chart-value">68°F</text><text x="814" y="238" className="chart-value">68°F</text>
       <text x="42" y="322" className="chart-value">58°F</text><text x="814" y="372" className="chart-value">42°F</text>
       {['10 PM','11 PM','12 AM','1 AM','2 AM','3 AM','4 AM','5 AM','6 AM','7 AM'].map((label, index) => <text key={label} x={25 + index * 88} y="22" className="chart-time">{label}</text>)}
@@ -22,24 +23,26 @@ function Chart({ reserve }) {
 }
 
 export default function Campglass() {
+  const { charge, overnight } = useWaypointContext();
   const [reserve, setReserve] = useState(30);
   const [applied, setApplied] = useState(false);
+  const overnightLow = overnight.length ? Math.round(Math.min(...overnight.map((item) => item.temperature))) : 42;
+  const morningReserve = Math.max(reserve, charge - 37);
 
   return (
     <section className="module campglass-module">
       <div className="camp-main">
-        <div className="panel-heading"><h1>Campglass</h1><p>Devil's Lake State Park</p></div>
-        <h2>Comfort until sunrise</h2>
+        <div className="panel-heading"><span>Campglass</span><h1>Comfort until sunrise</h1><p>Devil's Lake State Park</p></div>
         <div className="camp-metrics">
-          <div><strong>68%</strong><span>now</span></div>
-          <div><strong>{reserve + 1}%</strong><span>morning reserve</span></div>
-          <div><strong>42°F</strong><span>overnight low</span></div>
+          <div><strong>{charge}%</strong><span>now</span></div>
+          <div><strong>{morningReserve}%</strong><span>morning reserve</span></div>
+          <div><strong>{overnightLow}°F</strong><span>overnight low</span></div>
         </div>
-        <Chart reserve={reserve} />
+        <Chart reserve={reserve} charge={charge} morningReserve={morningReserve} />
         <div className="sunrise-label"><Sunrise /> 6:22 AM</div>
       </div>
 
-      <aside className="camp-controls">
+      <aside className="focus-panel camp-controls">
         <div className="camp-active"><Moon /><div><strong>Camp Mode active</strong><span>Optimizing comfort and efficiency overnight.</span></div></div>
         <div className="reserve-control">
           <label htmlFor="reserve">Protect at least <strong>{reserve}%</strong></label>

@@ -1,66 +1,76 @@
-import { AlertTriangle, Check, CloudRain, Navigation, Wind } from 'lucide-react';
+import { ArrowRight, Check, CloudRain, Navigation, Wind } from 'lucide-react';
 import { useState } from 'react';
+import { useWaypointContext } from '../App';
 import RouteMap from '../components/RouteMap';
-
-const weatherStops = [
-  { city: 'Madison', temp: '72°', wind: '10 mph' },
-  { city: 'Rockford', temp: '69°', wind: '16 mph', warning: true },
-  { city: 'Chicago', temp: '67°', wind: '13 mph' },
-];
+import { estimateArrival, formatDuration } from '../lib/utils';
 
 export default function RouteCast() {
+  const { charge, destination, originLabel, routeState, weather } = useWaypointContext();
   const [safer, setSafer] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [view, setView] = useState('now');
+  const [confirmed, setConfirmed] = useState(false);
+
+  const route = safer ? routeState.safer : routeState.primary;
+  const comparisonRoute = safer ? routeState.primary : routeState.safer;
+  const weatherStops = safer ? routeState.saferWeather : routeState.primaryWeather;
+  const arrivalReserve = Math.max(8, charge - (safer ? 41 : 45));
+  const destinationName = destination.label.split(',')[0];
 
   const chooseSafer = () => {
     setSafer(true);
-    setSent(true);
-    window.setTimeout(() => setSent(false), 3000);
+    setConfirmed(true);
   };
 
   return (
     <section className="module routecast-module">
-      <div className="map-region"><RouteMap safer={safer} /></div>
-      <aside className="insight-panel">
-        <div className="panel-heading">
-          <h1>RouteCast</h1>
-          <p>Madison → Chicago</p>
+      <h1 className="sr-only">RouteCast</h1>
+      <div className="map-region">
+        <RouteMap
+          route={route}
+          comparisonRoute={comparisonRoute}
+          weatherStops={weatherStops}
+          labels={[originLabel.split(',')[0], 'Rockford', destinationName]}
+        />
+        <div className={`map-hazard ${safer ? 'resolved' : ''}`}>
+          {safer ? <Check /> : <Wind />}
+          <div><strong>{safer ? 'Calmer route selected' : 'Crosswind ahead'}</strong><span>{safer ? '18 mph less crosswind' : '18 miles'}</span></div>
+        </div>
+      </div>
+
+      <aside className="focus-panel route-focus">
+        <div className="focus-tabs" role="tablist" aria-label="Route forecast timing">
+          <button className={view === 'now' ? 'active' : ''} onClick={() => setView('now')} role="tab" aria-selected={view === 'now'}>Now</button>
+          <button className={view === 'next' ? 'active' : ''} onClick={() => setView('next')} role="tab" aria-selected={view === 'next'}>Next</button>
         </div>
 
-        <div className="route-metrics">
-          <div><span>Arrive</span><strong>{safer ? '6:46' : '6:42'} PM</strong></div>
-          <div><span>At arrival</span><strong>{safer ? '27%' : '23%'}</strong></div>
-          <div><span>Travel</span><strong>{safer ? '2h 35m' : '2h 31m'}</strong></div>
-          <div><span>Headwind</span><strong className={safer ? '' : 'amber'}>{safer ? '+1%' : '+4%'}</strong></div>
+        <div className="weather-pair">
+          <div><CloudRain /><span>Rain</span><strong>{Math.round(weather.temperature_2m)}°F</strong><small>Feels like {Math.round(weather.apparent_temperature)}°</small></div>
+          <div><Wind /><span>Crosswind</span><strong>{safer ? 8 : Math.max(18, Math.round(weather.wind_speed_10m + 12))}<em> mph</em></strong><small>{safer ? 'Sheltered route' : 'Gusts near Rockford'}</small></div>
         </div>
 
-        <div className="weather-rail" aria-label="Weather along route">
-          {weatherStops.map((stop) => (
-            <div key={stop.city} className={stop.warning && !safer ? 'weather-warning' : ''}>
-              <span>{stop.city}</span>
-              <CloudRain size={30} />
-              <strong>{stop.temp}</strong>
-              <small><Wind size={15} /> {stop.wind}</small>
-            </div>
-          ))}
+        <div className="arrival-reserve">
+          <span>Arrival reserve</span>
+          <div><strong>{arrivalReserve}%</strong><em>~58 mi</em></div>
+          <i><b style={{ width: `${Math.min(100, arrivalReserve * 2.35)}%` }} /></i>
         </div>
 
-        <div className={`route-alert ${safer ? 'resolved' : ''}`}>
-          {safer ? <Check /> : <AlertTriangle />}
-          <span>{safer ? 'Crosswind avoided via US-20' : 'Crosswind near Rockford · 18 mi'}</span>
-        </div>
+        <button className="route-option" onClick={chooseSafer} disabled={safer}>
+          <Navigation />
+          <span><strong>{safer ? 'Calmer route active' : 'Calmer route available'}</strong><small>+{Math.max(1, Math.round((routeState.safer.duration - routeState.primary.duration) / 60))} min · 18 mph less crosswind</small></span>
+          <ArrowRight />
+        </button>
 
         <button className="primary-button" onClick={chooseSafer} disabled={safer}>
-          <Navigation size={20} fill="currentColor" />
-          {safer ? 'Safer route active' : 'Send safer route'}
-        </button>
-        <button className="secondary-button" onClick={() => { setSafer(false); setSent(false); }}>
-          Keep current route
+          {safer ? <Check /> : <Navigation />}
+          {safer ? 'Calmer route selected' : 'Take the calmer route'}
         </button>
 
-        <footer className="module-status">
-          <span className="live-dot" />
-          {sent ? 'Safer route staged in this demo' : 'Demo vehicle data · Updated now'}
+        <button className="quiet-action" onClick={() => { setSafer(false); setConfirmed(false); }} disabled={!safer}>Return to fastest route</button>
+
+        <footer className="focus-footer">
+          <span>{formatDuration(route.duration)}</span>
+          <span>ETA {estimateArrival(route.duration)}</span>
+          <small>{confirmed ? 'Saved in Waypoint' : routeState.status === 'ready' ? 'Live route forecast' : 'Using reliable fallback data'}</small>
         </footer>
       </aside>
     </section>

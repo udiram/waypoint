@@ -1,22 +1,40 @@
 import { Check, Eye, Lock, Pause, Play, Plus, QrCode } from 'lucide-react';
-import { useState } from 'react';
-import { initialMoments } from '../data';
+import QRCode from 'qrcode';
+import { useEffect, useMemo, useState } from 'react';
+import { useWaypointContext } from '../App';
 import Modal from '../components/Modal';
+import { toEncodedPayload } from '../lib/utils';
 
 function MomentPhoto({ frame }) {
   return <div className="moment-photo" style={{ '--frame': frame }} role="img" aria-label="Trip moment photograph" />;
 }
 
 export default function TripCapsule() {
-  const [moments, setMoments] = useState(initialMoments);
+  const { capsuleMoments: moments, setCapsuleMoments, destination, originLabel } = useWaypointContext();
   const [recording, setRecording] = useState(true);
   const [modal, setModal] = useState(null);
   const [draft, setDraft] = useState('Lakefront arrival');
+  const [qrSource, setQrSource] = useState('');
+
+  const shareUrl = useMemo(() => {
+    const next = new URL(window.location.href);
+    next.search = '';
+    next.searchParams.set('capsule', toEncodedPayload({ destination, moments }));
+    return next.toString();
+  }, [destination, moments]);
+
+  useEffect(() => {
+    if (modal !== 'share') return undefined;
+    let ignore = false;
+    QRCode.toDataURL(shareUrl, { width: 360, margin: 1, color: { dark: '#081017', light: '#f4f7f8' } })
+      .then((source) => { if (!ignore) setQrSource(source); });
+    return () => { ignore = true; };
+  }, [modal, shareUrl]);
 
   const addMoment = (event) => {
     event.preventDefault();
     if (!draft.trim()) return;
-    setMoments((items) => [...items, { title: draft.trim(), time: 'Now', frame: items.length % 4 }]);
+    setCapsuleMoments((items) => [...items, { title: draft.trim(), time: 'Now', frame: items.length % 4 }]);
     setDraft('');
     setModal(null);
   };
@@ -34,25 +52,19 @@ export default function TripCapsule() {
         ))}
       </div>
 
-      <aside className="capsule-panel">
-        <div className="panel-heading"><h1>Trip Capsule</h1><h2>Lake Michigan Weekend</h2><p>142 miles · {moments.length} moments · Today</p></div>
+      <aside className="focus-panel capsule-focus">
+        <div className="capsule-heading"><span>Trip Capsule</span><h1>Lake Michigan weekend</h1><p>{originLabel.split(',')[0]} → {destination.label.split(',')[0]} · {moments.length} moments</p></div>
         <button className={`recording-row ${recording ? 'active' : ''}`} onClick={() => setRecording((value) => !value)}>
-          <i />
-          <span>{recording ? 'Recording automatically' : 'Recording paused'}</span>
-          {recording ? <Pause /> : <Play />}
+          <i /><span>{recording ? 'Recording the trip' : 'Recording paused'}</span>{recording ? <Pause /> : <Play />}
         </button>
-
         <div className="capsule-actions">
           <button onClick={() => setModal('add')}><Plus /> Add a moment</button>
-          <button onClick={() => setModal('preview')}><Eye /> Preview capsule</button>
-          <button onClick={() => setModal('share')}><QrCode /> Share with QR</button>
+          <button onClick={() => setModal('preview')}><Eye /> Preview story</button>
+          <button onClick={() => setModal('share')}><QrCode /> Share privately</button>
         </div>
-
-        <div className="capsule-preview">
-          {[0,1,2,3].map((frame) => <MomentPhoto key={frame} frame={frame} />)}
-        </div>
+        <div className="capsule-preview">{[0, 1, 2, 3].map((frame) => <MomentPhoto key={frame} frame={frame} />)}</div>
         <p className="privacy-line"><Lock /> Location stays private until you share</p>
-        <footer className="module-status"><Check /> Last moment saved {moments.length > 4 ? 'now' : '11 min ago'}</footer>
+        <footer className="focus-footer"><Check /><span>Saved locally</span><small>{moments.length > 4 ? 'Last moment saved now' : 'Ready for the next moment'}</small></footer>
       </aside>
 
       {modal === 'add' && (
@@ -65,16 +77,16 @@ export default function TripCapsule() {
         </Modal>
       )}
       {modal === 'preview' && (
-        <Modal title="Lake Michigan Weekend" onClose={() => setModal(null)} wide>
+        <Modal title="Lake Michigan weekend" onClose={() => setModal(null)} wide>
           <div className="preview-hero" />
-          <div className="preview-summary"><strong>142 miles</strong><span>{moments.length} moments</span><span>Madison → Chicago</span></div>
+          <div className="preview-summary"><strong>{moments.length} moments</strong><span>{originLabel.split(',')[0]} → {destination.label.split(',')[0]}</span><span>Saved on this device</span></div>
           <button className="primary-button" onClick={() => setModal(null)}>Looks good</button>
         </Modal>
       )}
       {modal === 'share' && (
         <Modal title="Share trip capsule" onClose={() => setModal(null)}>
-          <div className="qr-demo">{Array.from({ length: 81 }, (_, index) => <i key={index} className={(index * 5 + index % 7) % 3 === 0 ? 'dark' : ''} />)}</div>
-          <p className="modal-copy">This demo code shares the capsule preview, not your private live location.</p>
+          {qrSource ? <img className="qr-image" src={qrSource} alt="QR code for this trip capsule" /> : <div className="qr-loading" />}
+          <p className="modal-copy">This private link contains a copy of the capsule moments, not your live location.</p>
           <button className="primary-button" onClick={() => setModal(null)}>Done</button>
         </Modal>
       )}
